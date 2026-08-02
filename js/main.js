@@ -1,6 +1,6 @@
 const state = {
     scene: 0,
-    selectedCountry: null,
+    selectedCountry: "",
     displayYear: 2023
 };
 
@@ -13,7 +13,7 @@ const scenes = [
     {
         title: "Income is not the whole story",
         description:
-            "Countries at similar income levels can still experience very different health outcomes."
+            "Some countries achieve relatively long lives without reaching the world's highest income levels."
     },
     {
         title: "Every country follows its own path",
@@ -23,6 +23,11 @@ const scenes = [
 ];
 
 const svg = d3.select("#chart");
+const tooltip = d3.select("#tooltip");
+const previousButton = d3.select("#previous-button");
+const nextButton = d3.select("#next-button");
+const countrySelect = d3.select("#country-select");
+const explorationControls = d3.select("#exploration-controls");
 
 const svgWidth = 960;
 const svgHeight = 600;
@@ -34,32 +39,16 @@ const margin = {
     left: 90
 };
 
-const width =
-    svgWidth - margin.left - margin.right;
-
-const height =
-    svgHeight - margin.top - margin.bottom;
+const width = svgWidth - margin.left - margin.right;
+const height = svgHeight - margin.top - margin.bottom;
 
 const chart = svg
     .append("g")
-    .attr(
-        "transform",
-        `translate(${margin.left},${margin.top})`
-    );
+    .attr("transform", `translate(${margin.left},${margin.top})`);
 
-const tooltip = d3.select("#tooltip");
-
-const previousButton =
-    d3.select("#previous-button");
-
-const nextButton =
-    d3.select("#next-button");
-
-const countrySelect =
-    d3.select("#country-select");
-
-const explorationControls =
-    d3.select("#exploration-controls");
+let xScale;
+let yScale;
+let populationScale;
 
 const regionColors = d3.scaleOrdinal()
     .domain([
@@ -73,31 +62,19 @@ const regionColors = d3.scaleOrdinal()
     ])
     .range(d3.schemeTableau10);
 
-
-/*
-Load and convert the CSV values.
-*/
 async function init() {
+    const data = await d3.csv("data/development.csv", d => ({
+        Country: d.Country,
+        CountryCode: d.CountryCode,
+        Region: d.Region,
+        IncomeGroup: d.IncomeGroup,
+        Year: +d.Year,
+        GDPPerCapita: +d.GDPPerCapita,
+        LifeExpectancy: +d.LifeExpectancy,
+        Population: +d.Population
+    }));
 
-    const data = await d3.csv(
-        "data/development.csv",
-        function(d) {
-            return {
-                Country: d.Country,
-                CountryCode: d.CountryCode,
-                Region: d.Region,
-                IncomeGroup: d.IncomeGroup,
-                Year: +d.Year,
-                GDPPerCapita: +d.GDPPerCapita,
-                LifeExpectancy: +d.LifeExpectancy,
-                Population: +d.Population
-            };
-        }
-    );
-
-    const countries = Array.from(
-        new Set(data.map(d => d.Country))
-    ).sort();
+    const countries = Array.from(new Set(data.map(d => d.Country))).sort();
 
     countrySelect
         .selectAll("option.country-option")
@@ -108,19 +85,19 @@ async function init() {
         .attr("value", d => d)
         .text(d => d);
 
-    countrySelect.on("change", function() {
-        state.selectedCountry = this.value || null;
+    countrySelect.on("change", function () {
+        state.selectedCountry = this.value;
         renderScene(data);
     });
 
-    previousButton.on("click", function() {
+    previousButton.on("click", function () {
         if (state.scene > 0) {
             state.scene -= 1;
             renderScene(data);
         }
     });
 
-    nextButton.on("click", function() {
+    nextButton.on("click", function () {
         if (state.scene < scenes.length - 1) {
             state.scene += 1;
             renderScene(data);
@@ -130,83 +107,53 @@ async function init() {
     renderScene(data);
 }
 
-
-/*
-Main rendering function.
-This function uses state.scene to construct each scene.
-*/
 function renderScene(data) {
-
     const scene = scenes[state.scene];
 
-    d3.select("#scene-title")
-        .text(scene.title);
-
-    d3.select("#scene-description")
-        .text(scene.description);
-
+    d3.select("#scene-title").text(scene.title);
+    d3.select("#scene-description").text(scene.description);
     d3.select("#scene-indicator")
         .text(`${state.scene + 1} / ${scenes.length}`);
 
-    previousButton
-        .property("disabled", state.scene === 0);
+    previousButton.property("disabled", state.scene === 0);
+    nextButton.property("disabled", state.scene === scenes.length - 1);
 
-    nextButton
-        .property(
-            "disabled",
-            state.scene === scenes.length - 1
-        );
-
-    explorationControls
-        .classed("visible", state.scene === 2);
+    explorationControls.classed("visible", state.scene === 2);
 
     chart.selectAll("*").remove();
+    tooltip.style("display", "none");
 
-    const yearData = data.filter(
-        d => d.Year === state.displayYear
-    );
+    const yearData = data.filter(d => d.Year === state.displayYear);
 
     drawBaseScatterPlot(yearData);
 
     if (state.scene === 0) {
-        renderSceneOne(yearData);
-    }
-
-    if (state.scene === 1) {
+        renderSceneOne();
+    } else if (state.scene === 1) {
         renderSceneTwo(yearData);
-    }
-
-    if (state.scene === 2) {
-        renderSceneThree(data, yearData);
+    } else {
+        renderSceneThree(data);
     }
 }
 
-
-/*
-Draw common chart elements used in all scenes.
-*/
 function drawBaseScatterPlot(yearData) {
-
-    const x = d3.scaleLog()
+    xScale = d3.scaleLog()
         .domain([100, 150000])
         .range([0, width]);
 
-    const y = d3.scaleLinear()
+    yScale = d3.scaleLinear()
         .domain([45, 90])
         .range([height, 0]);
 
-    const populationScale = d3.scaleSqrt()
-        .domain([
-            0,
-            d3.max(yearData, d => d.Population)
-        ])
-        .range([3, 20]);
+    populationScale = d3.scaleSqrt()
+        .domain([0, d3.max(yearData, d => d.Population)])
+        .range([3, 18]);
 
     chart.append("g")
         .attr("class", "grid")
         .attr("transform", `translate(0,${height})`)
         .call(
-            d3.axisBottom(x)
+            d3.axisBottom(xScale)
                 .ticks(6)
                 .tickSize(-height)
                 .tickFormat("")
@@ -215,7 +162,7 @@ function drawBaseScatterPlot(yearData) {
     chart.append("g")
         .attr("class", "grid")
         .call(
-            d3.axisLeft(y)
+            d3.axisLeft(yScale)
                 .ticks(8)
                 .tickSize(-width)
                 .tickFormat("")
@@ -224,16 +171,11 @@ function drawBaseScatterPlot(yearData) {
     chart.append("g")
         .attr("class", "axis")
         .attr("transform", `translate(0,${height})`)
-        .call(
-            d3.axisBottom(x)
-                .ticks(6, "~s")
-        );
+        .call(d3.axisBottom(xScale).ticks(6, "~s"));
 
     chart.append("g")
         .attr("class", "axis")
-        .call(
-            d3.axisLeft(y)
-        );
+        .call(d3.axisLeft(yScale));
 
     chart.append("text")
         .attr("x", width / 2)
@@ -248,29 +190,28 @@ function drawBaseScatterPlot(yearData) {
         .attr("text-anchor", "middle")
         .text("Life expectancy at birth (years)");
 
-    chart.selectAll("circle")
+    chart.append("text")
+        .attr("class", "year-label")
+        .attr("x", width)
+        .attr("y", 18)
+        .attr("text-anchor", "end")
+        .text(state.displayYear);
+
+    chart.selectAll(".country-point")
         .data(yearData, d => d.CountryCode)
         .enter()
         .append("circle")
         .attr("class", "country-point")
-        .attr("cx", d => x(d.GDPPerCapita))
-        .attr("cy", d => y(d.LifeExpectancy))
+        .attr("cx", d => xScale(d.GDPPerCapita))
+        .attr("cy", d => yScale(d.LifeExpectancy))
         .attr("r", d => populationScale(d.Population))
         .attr("fill", d => regionColors(d.Region))
         .attr("opacity", 0.72);
 
-    chart.property("xScale", x);
-    chart.property("yScale", y);
-    chart.property("populationScale", populationScale);
+    drawLegend();
 }
 
-
-/*
-Scene 1:
-Show the overall relationship.
-*/
-function renderSceneOne(yearData) {
-
+function renderSceneOne() {
     chart.selectAll(".country-point")
         .attr("opacity", 0)
         .transition()
@@ -285,14 +226,7 @@ function renderSceneOne(yearData) {
     );
 }
 
-
-/*
-Scene 2:
-Highlight countries that perform relatively well
-at moderate income levels.
-*/
 function renderSceneTwo(yearData) {
-
     const highlightedCountries = new Set([
         "Costa Rica",
         "Vietnam",
@@ -302,36 +236,20 @@ function renderSceneTwo(yearData) {
     chart.selectAll(".country-point")
         .transition()
         .duration(700)
-        .attr(
-            "opacity",
-            d => highlightedCountries.has(d.Country)
-                ? 1
-                : 0.12
+        .attr("opacity", d =>
+            highlightedCountries.has(d.Country) ? 1 : 0.12
         )
-        .attr(
-            "stroke-width",
-            d => highlightedCountries.has(d.Country)
-                ? 2.5
-                : 0.8
+        .attr("stroke-width", d =>
+            highlightedCountries.has(d.Country) ? 2.5 : 0.8
         );
 
     chart.selectAll(".highlight-label")
-        .data(
-            yearData.filter(
-                d => highlightedCountries.has(d.Country)
-            )
-        )
+        .data(yearData.filter(d => highlightedCountries.has(d.Country)))
         .enter()
         .append("text")
         .attr("class", "highlight-label")
-        .attr(
-            "x",
-            d => chart.property("xScale")(d.GDPPerCapita) + 10
-        )
-        .attr(
-            "y",
-            d => chart.property("yScale")(d.LifeExpectancy) - 8
-        )
+        .attr("x", d => xScale(d.GDPPerCapita) + 10)
+        .attr("y", d => yScale(d.LifeExpectancy) - 8)
         .text(d => d.Country);
 
     addAnnotation(
@@ -342,60 +260,38 @@ function renderSceneTwo(yearData) {
     );
 }
 
-
-/*
-Scene 3:
-Enable free-form exploration.
-*/
-function renderSceneThree(allData, yearData) {
-
+function renderSceneThree(allData) {
     chart.selectAll(".country-point")
         .attr("opacity", d => {
             if (!state.selectedCountry) {
                 return 0.68;
             }
-
-            return d.Country === state.selectedCountry
-                ? 1
-                : 0.08;
+            return d.Country === state.selectedCountry ? 1 : 0.08;
         })
-        .attr("stroke-width", d => {
-            return d.Country === state.selectedCountry
-                ? 3
-                : 0.8;
-        })
-        .on("mouseover", function(event, d) {
-
+        .attr("stroke-width", d =>
+            d.Country === state.selectedCountry ? 3 : 0.8
+        )
+        .on("mouseover", function (event, d) {
             tooltip
                 .style("display", "block")
                 .html(`
                     <strong>${d.Country}</strong><br>
                     Region: ${d.Region}<br>
-                    GDP per capita:
-                    $${d3.format(",.0f")(d.GDPPerCapita)}<br>
-                    Life expectancy:
-                    ${d.LifeExpectancy.toFixed(1)} years<br>
-                    Population:
-                    ${d3.format(",")(d.Population)}
+                    GDP per capita: $${d3.format(",.0f")(d.GDPPerCapita)}<br>
+                    Life expectancy: ${d.LifeExpectancy.toFixed(1)} years<br>
+                    Population: ${d3.format(",")(d.Population)}
                 `);
         })
-        .on("mousemove", function(event) {
-
-            const container =
-                document.querySelector(".chart-container")
-                    .getBoundingClientRect();
+        .on("mousemove", function (event) {
+            const container = document
+                .querySelector(".chart-container")
+                .getBoundingClientRect();
 
             tooltip
-                .style(
-                    "left",
-                    `${event.clientX - container.left + 15}px`
-                )
-                .style(
-                    "top",
-                    `${event.clientY - container.top + 15}px`
-                );
+                .style("left", `${event.clientX - container.left + 15}px`)
+                .style("top", `${event.clientY - container.top + 15}px`);
         })
-        .on("mouseout", function() {
+        .on("mouseout", function () {
             tooltip.style("display", "none");
         });
 
@@ -411,25 +307,22 @@ function renderSceneThree(allData, yearData) {
     );
 }
 
-
-/*
-Draw the selected country's path from 2000 to 2023.
-*/
 function drawCountryPath(data, countryName) {
-
     const countryData = data
         .filter(d => d.Country === countryName)
         .sort((a, b) => a.Year - b.Year);
 
-    const x = chart.property("xScale");
-    const y = chart.property("yScale");
+    if (countryData.length === 0) {
+        return;
+    }
 
     const line = d3.line()
-        .x(d => x(d.GDPPerCapita))
-        .y(d => y(d.LifeExpectancy));
+        .x(d => xScale(d.GDPPerCapita))
+        .y(d => yScale(d.LifeExpectancy));
 
     chart.append("path")
         .datum(countryData)
+        .attr("class", "country-path")
         .attr("fill", "none")
         .attr("stroke", "#111827")
         .attr("stroke-width", 2.5)
@@ -440,8 +333,8 @@ function drawCountryPath(data, countryName) {
         .enter()
         .append("circle")
         .attr("class", "trajectory-point")
-        .attr("cx", d => x(d.GDPPerCapita))
-        .attr("cy", d => y(d.LifeExpectancy))
+        .attr("cx", d => xScale(d.GDPPerCapita))
+        .attr("cy", d => yScale(d.LifeExpectancy))
         .attr("r", 3)
         .attr("fill", "#111827");
 
@@ -449,23 +342,45 @@ function drawCountryPath(data, countryName) {
     const last = countryData[countryData.length - 1];
 
     chart.append("text")
-        .attr("x", x(first.GDPPerCapita) + 6)
-        .attr("y", y(first.LifeExpectancy) + 16)
+        .attr("class", "trajectory-label")
+        .attr("x", xScale(first.GDPPerCapita) + 6)
+        .attr("y", yScale(first.LifeExpectancy) + 16)
         .text(first.Year);
 
     chart.append("text")
-        .attr("x", x(last.GDPPerCapita) + 6)
-        .attr("y", y(last.LifeExpectancy) - 8)
+        .attr("class", "trajectory-label")
+        .attr("x", xScale(last.GDPPerCapita) + 6)
+        .attr("y", yScale(last.LifeExpectancy) - 8)
         .text(last.Year);
 }
 
+function drawLegend() {
+    const items = regionColors.domain();
 
-/*
-Permanent annotation used in each scene.
-Unlike a tooltip, this annotation is always visible.
-*/
+    const legend = chart
+        .append("g")
+        .attr("class", "legend")
+        .attr("transform", `translate(${width - 225},${height - 160})`);
+
+    const rows = legend
+        .selectAll(".legend-row")
+        .data(items)
+        .enter()
+        .append("g")
+        .attr("class", "legend-row")
+        .attr("transform", (d, i) => `translate(0,${i * 20})`);
+
+    rows.append("circle")
+        .attr("r", 5)
+        .attr("fill", d => regionColors(d));
+
+    rows.append("text")
+        .attr("x", 12)
+        .attr("y", 4)
+        .text(d => d);
+}
+
 function addAnnotation(x, y, title, body) {
-
     const annotation = chart
         .append("g")
         .attr("class", "annotation")
@@ -492,33 +407,24 @@ function addAnnotation(x, y, title, body) {
     wrapText(bodyText, body, 255);
 }
 
-
-/*
-Wrap annotation text onto multiple SVG lines.
-*/
 function wrapText(textSelection, text, maxWidth) {
-
     const words = text.split(/\s+/);
     let line = [];
-    let lineNumber = 0;
 
     let tspan = textSelection
         .append("tspan")
         .attr("x", 0)
         .attr("dy", 0);
 
-    words.forEach(function(word) {
-
+    words.forEach(word => {
         line.push(word);
         tspan.text(line.join(" "));
 
         if (tspan.node().getComputedTextLength() > maxWidth) {
-
             line.pop();
             tspan.text(line.join(" "));
 
             line = [word];
-            lineNumber += 1;
 
             tspan = textSelection
                 .append("tspan")
@@ -529,7 +435,9 @@ function wrapText(textSelection, text, maxWidth) {
     });
 }
 
-
-init().catch(function(error) {
+init().catch(error => {
     console.error("Failed to load the data:", error);
+
+    d3.select("#scene-description")
+        .text("The visualization could not load its data. Check the console for details.");
 });
