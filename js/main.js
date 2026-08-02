@@ -1,24 +1,25 @@
 const state = {
     scene: 0,
     selectedCountry: "",
-    displayYear: 2023
+    displayYear: 2023,
+    animationToken: 0
 };
 
 const scenes = [
     {
-        title: "Wealth and longevity usually rise together",
+        title: "The world moved upward",
         description:
-            "Countries with higher GDP per person generally have longer life expectancy."
+            "From 2000 to 2023, most countries became richer and life expectancy generally increased."
     },
     {
-        title: "Income is not the whole story",
+        title: "Growth is uneven",
         description:
-            "Some countries achieve relatively long lives without reaching the world's highest income levels."
+            "By 2023, countries in different income groups still occupied very different parts of the development landscape."
     },
     {
         title: "Every country follows its own path",
         description:
-            "Choose a country or hover over a point to explore how development changed from 2000 to 2023."
+            "Choose a country or hover over a point to explore its development from 2000 to 2023."
     }
 ];
 
@@ -46,6 +47,7 @@ const chart = svg
     .append("g")
     .attr("transform", `translate(${margin.left},${margin.top})`);
 
+let data = [];
 let xScale;
 let yScale;
 let populationScale;
@@ -62,8 +64,22 @@ const regionColors = d3.scaleOrdinal()
     ])
     .range(d3.schemeTableau10);
 
+const incomeColors = d3.scaleOrdinal()
+    .domain([
+        "Low income",
+        "Lower middle income",
+        "Upper middle income",
+        "High income"
+    ])
+    .range([
+        "#8c6bb1",
+        "#4eb3d3",
+        "#fdb863",
+        "#d73027"
+    ]);
+
 async function init() {
-    const data = await d3.csv("data/development.csv", d => ({
+    data = await d3.csv("data/development.csv", d => ({
         Country: d.Country,
         CountryCode: d.CountryCode,
         Region: d.Region,
@@ -74,7 +90,9 @@ async function init() {
         Population: +d.Population
     }));
 
-    const countries = Array.from(new Set(data.map(d => d.Country))).sort();
+    const countries = Array.from(
+        new Set(data.map(d => d.Country))
+    ).sort();
 
     countrySelect
         .selectAll("option.country-option")
@@ -87,27 +105,29 @@ async function init() {
 
     countrySelect.on("change", function () {
         state.selectedCountry = this.value;
-        renderScene(data);
+        renderScene();
     });
 
     previousButton.on("click", function () {
         if (state.scene > 0) {
             state.scene -= 1;
-            renderScene(data);
+            renderScene();
         }
     });
 
     nextButton.on("click", function () {
         if (state.scene < scenes.length - 1) {
             state.scene += 1;
-            renderScene(data);
+            renderScene();
         }
     });
 
-    renderScene(data);
+    renderScene();
 }
 
-function renderScene(data) {
+function renderScene() {
+    state.animationToken += 1;
+
     const scene = scenes[state.scene];
 
     d3.select("#scene-title").text(scene.title);
@@ -120,23 +140,20 @@ function renderScene(data) {
 
     explorationControls.classed("visible", state.scene === 2);
 
+    chart.selectAll("*").interrupt();
     chart.selectAll("*").remove();
     tooltip.style("display", "none");
-
-    const yearData = data.filter(d => d.Year === state.displayYear);
-
-    drawBaseScatterPlot(yearData);
 
     if (state.scene === 0) {
         renderSceneOne();
     } else if (state.scene === 1) {
-        renderSceneTwo(yearData);
+        renderSceneTwo();
     } else {
-        renderSceneThree(data);
+        renderSceneThree();
     }
 }
 
-function drawBaseScatterPlot(yearData) {
+function createScales(referenceData) {
     xScale = d3.scaleLog()
         .domain([100, 150000])
         .range([0, width]);
@@ -146,9 +163,11 @@ function drawBaseScatterPlot(yearData) {
         .range([height, 0]);
 
     populationScale = d3.scaleSqrt()
-        .domain([0, d3.max(yearData, d => d.Population)])
+        .domain([0, d3.max(referenceData, d => d.Population)])
         .range([3, 18]);
+}
 
+function drawAxes() {
     chart.append("g")
         .attr("class", "grid")
         .attr("transform", `translate(0,${height})`)
@@ -189,13 +208,148 @@ function drawBaseScatterPlot(yearData) {
         .attr("y", -62)
         .attr("text-anchor", "middle")
         .text("Life expectancy at birth (years)");
+}
 
-    chart.append("text")
+function drawYearLabel(year) {
+    return chart.append("text")
         .attr("class", "year-label")
         .attr("x", width)
         .attr("y", 18)
         .attr("text-anchor", "end")
-        .text(state.displayYear);
+        .text(year);
+}
+
+/* Scene 1: animate the global distribution through time. */
+function renderSceneOne() {
+    const token = state.animationToken;
+    const years = [2000, 2005, 2010, 2015, 2020, 2023];
+    const referenceData = data.filter(d => d.Year === 2023);
+
+    createScales(referenceData);
+    drawAxes();
+
+    const firstYearData = data.filter(d => d.Year === years[0]);
+
+    const points = chart
+        .selectAll(".country-point")
+        .data(firstYearData, d => d.CountryCode)
+        .enter()
+        .append("circle")
+        .attr("class", "country-point")
+        .attr("cx", d => xScale(d.GDPPerCapita))
+        .attr("cy", d => yScale(d.LifeExpectancy))
+        .attr("r", d => populationScale(d.Population))
+        .attr("fill", d => regionColors(d.Region))
+        .attr("opacity", 0.72);
+
+    const yearLabel = drawYearLabel(years[0]);
+
+    drawLegend(regionColors, "Region");
+
+    addAnnotation(
+        500,
+        95,
+        "Most countries moved up and right",
+        "Over two decades, income and longevity generally increased together."
+    );
+
+    animateSceneOne(points, yearLabel, years, token);
+}
+
+async function animateSceneOne(points, yearLabel, years, token) {
+    for (let i = 1; i < years.length; i += 1) {
+        if (token !== state.animationToken || state.scene !== 0) {
+            return;
+        }
+
+        const year = years[i];
+        const yearData = data.filter(d => d.Year === year);
+        const byCode = new Map(yearData.map(d => [d.CountryCode, d]));
+
+        yearLabel.text(year);
+
+        const transition = points
+            .transition()
+            .duration(850)
+            .ease(d3.easeCubicInOut)
+            .attr("cx", d => {
+                const next = byCode.get(d.CountryCode);
+                return xScale((next || d).GDPPerCapita);
+            })
+            .attr("cy", d => {
+                const next = byCode.get(d.CountryCode);
+                return yScale((next || d).LifeExpectancy);
+            })
+            .attr("r", d => {
+                const next = byCode.get(d.CountryCode);
+                return populationScale((next || d).Population);
+            });
+
+        try {
+            await transition.end();
+        } catch {
+            return;
+        }
+    }
+}
+
+/* Scene 2: use income group instead of region to reveal inequality. */
+function renderSceneTwo() {
+    const yearData = data.filter(d => d.Year === 2023);
+
+    createScales(yearData);
+    drawAxes();
+    drawYearLabel(2023);
+
+    chart.selectAll(".country-point")
+        .data(yearData, d => d.CountryCode)
+        .enter()
+        .append("circle")
+        .attr("class", "country-point")
+        .attr("cx", d => xScale(d.GDPPerCapita))
+        .attr("cy", d => yScale(d.LifeExpectancy))
+        .attr("r", d => populationScale(d.Population))
+        .attr("fill", d => incomeColors(d.IncomeGroup))
+        .attr("opacity", 0)
+        .transition()
+        .duration(650)
+        .attr("opacity", 0.78);
+
+    drawLegend(incomeColors, "Income group");
+
+    addCallout(
+        615,
+        75,
+        "High-income countries",
+        "Most cluster in the upper-right.",
+        705,
+        125
+    );
+
+    addCallout(
+        100,
+        345,
+        "Low-income countries",
+        "Many remain concentrated in the lower-left.",
+        235,
+        330
+    );
+
+    addAnnotation(
+        425,
+        205,
+        "The gap remains visible",
+        "Countries did not arrive at the same level of income or health by 2023."
+    );
+}
+
+/* Scene 3: free exploration with a cleaner milestone trajectory. */
+function renderSceneThree() {
+    const yearData = data.filter(d => d.Year === 2023);
+
+    createScales(yearData);
+    drawAxes();
+    drawYearLabel(2023);
 
     chart.selectAll(".country-point")
         .data(yearData, d => d.CountryCode)
@@ -206,62 +360,6 @@ function drawBaseScatterPlot(yearData) {
         .attr("cy", d => yScale(d.LifeExpectancy))
         .attr("r", d => populationScale(d.Population))
         .attr("fill", d => regionColors(d.Region))
-        .attr("opacity", 0.72);
-
-    drawLegend();
-}
-
-function renderSceneOne() {
-    chart.selectAll(".country-point")
-        .attr("opacity", 0)
-        .transition()
-        .duration(900)
-        .attr("opacity", 0.72);
-
-    addAnnotation(
-        500,
-        95,
-        "A clear upward pattern",
-        "Most countries with higher income also report longer life expectancy."
-    );
-}
-
-function renderSceneTwo(yearData) {
-    const highlightedCountries = new Set([
-        "Costa Rica",
-        "Vietnam",
-        "Cuba"
-    ]);
-
-    chart.selectAll(".country-point")
-        .transition()
-        .duration(700)
-        .attr("opacity", d =>
-            highlightedCountries.has(d.Country) ? 1 : 0.12
-        )
-        .attr("stroke-width", d =>
-            highlightedCountries.has(d.Country) ? 2.5 : 0.8
-        );
-
-    chart.selectAll(".highlight-label")
-        .data(yearData.filter(d => highlightedCountries.has(d.Country)))
-        .enter()
-        .append("text")
-        .attr("class", "highlight-label")
-        .attr("x", d => xScale(d.GDPPerCapita) + 10)
-        .attr("y", d => yScale(d.LifeExpectancy) - 8)
-        .text(d => d.Country);
-
-    addAnnotation(
-        470,
-        105,
-        "Different paths to better health",
-        "Some countries achieve relatively long lives without reaching the world's highest income levels."
-    );
-}
-
-function renderSceneThree(allData) {
-    chart.selectAll(".country-point")
         .attr("opacity", d => {
             if (!state.selectedCountry) {
                 return 0.68;
@@ -272,31 +370,15 @@ function renderSceneThree(allData) {
             d.Country === state.selectedCountry ? 3 : 0.8
         )
         .on("mouseover", function (event, d) {
-            tooltip
-                .style("display", "block")
-                .html(`
-                    <strong>${d.Country}</strong><br>
-                    Region: ${d.Region}<br>
-                    GDP per capita: $${d3.format(",.0f")(d.GDPPerCapita)}<br>
-                    Life expectancy: ${d.LifeExpectancy.toFixed(1)} years<br>
-                    Population: ${d3.format(",")(d.Population)}
-                `);
+            showTooltip(event, d);
         })
-        .on("mousemove", function (event) {
-            const container = document
-                .querySelector(".chart-container")
-                .getBoundingClientRect();
+        .on("mousemove", moveTooltip)
+        .on("mouseout", hideTooltip);
 
-            tooltip
-                .style("left", `${event.clientX - container.left + 15}px`)
-                .style("top", `${event.clientY - container.top + 15}px`);
-        })
-        .on("mouseout", function () {
-            tooltip.style("display", "none");
-        });
+    drawLegend(regionColors, "Region");
 
     if (state.selectedCountry) {
-        drawCountryPath(allData, state.selectedCountry);
+        drawCountryTrajectory(state.selectedCountry);
     }
 
     addAnnotation(
@@ -307,26 +389,69 @@ function renderSceneThree(allData) {
     );
 }
 
-function drawCountryPath(data, countryName) {
+/*
+Use six milestone years rather than every annual point.
+This avoids the noisy zig-zag caused by year-to-year GDP fluctuations.
+*/
+function drawCountryTrajectory(countryName) {
+    const milestoneYears = new Set([2000, 2005, 2010, 2015, 2020, 2023]);
+
     const countryData = data
-        .filter(d => d.Country === countryName)
+        .filter(d =>
+            d.Country === countryName &&
+            milestoneYears.has(d.Year)
+        )
         .sort((a, b) => a.Year - b.Year);
 
-    if (countryData.length === 0) {
+    if (countryData.length < 2) {
         return;
     }
 
+    const markerId = "trajectory-arrow";
+
+    const defs = svg.select("defs").empty()
+        ? svg.append("defs")
+        : svg.select("defs");
+
+    defs.select(`#${markerId}`).remove();
+
+    defs.append("marker")
+        .attr("id", markerId)
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 9)
+        .attr("refY", 0)
+        .attr("markerWidth", 7)
+        .attr("markerHeight", 7)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-5L10,0L0,5")
+        .attr("fill", "#111827");
+
     const line = d3.line()
+        .curve(d3.curveMonotoneX)
         .x(d => xScale(d.GDPPerCapita))
         .y(d => yScale(d.LifeExpectancy));
 
-    chart.append("path")
+    const path = chart.append("path")
         .datum(countryData)
         .attr("class", "country-path")
         .attr("fill", "none")
         .attr("stroke", "#111827")
         .attr("stroke-width", 2.5)
+        .attr("stroke-linecap", "round")
+        .attr("stroke-linejoin", "round")
+        .attr("marker-end", `url(#${markerId})`)
         .attr("d", line);
+
+    const pathLength = path.node().getTotalLength();
+
+    path
+        .attr("stroke-dasharray", `${pathLength} ${pathLength}`)
+        .attr("stroke-dashoffset", pathLength)
+        .transition()
+        .duration(900)
+        .ease(d3.easeCubicOut)
+        .attr("stroke-dashoffset", 0);
 
     chart.selectAll(".trajectory-point")
         .data(countryData)
@@ -335,32 +460,81 @@ function drawCountryPath(data, countryName) {
         .attr("class", "trajectory-point")
         .attr("cx", d => xScale(d.GDPPerCapita))
         .attr("cy", d => yScale(d.LifeExpectancy))
-        .attr("r", 3)
-        .attr("fill", "#111827");
+        .attr("r", d =>
+            d.Year === 2000 || d.Year === 2023 ? 5 : 3.5
+        )
+        .attr("fill", d =>
+            d.Year === 2000 || d.Year === 2023
+                ? "#111827"
+                : "white"
+        )
+        .attr("stroke", "#111827")
+        .attr("stroke-width", 2)
+        .on("mouseover", function (event, d) {
+            showTooltip(event, d);
+        })
+        .on("mousemove", moveTooltip)
+        .on("mouseout", hideTooltip);
 
-    const first = countryData[0];
+    chart.selectAll(".milestone-label")
+        .data(countryData)
+        .enter()
+        .append("text")
+        .attr("class", "trajectory-label milestone-label")
+        .attr("x", d => xScale(d.GDPPerCapita) + 7)
+        .attr("y", d => yScale(d.LifeExpectancy) - 8)
+        .text(d => d.Year);
+
     const last = countryData[countryData.length - 1];
 
     chart.append("text")
-        .attr("class", "trajectory-label")
-        .attr("x", xScale(first.GDPPerCapita) + 6)
-        .attr("y", yScale(first.LifeExpectancy) + 16)
-        .text(first.Year);
-
-    chart.append("text")
-        .attr("class", "trajectory-label")
-        .attr("x", xScale(last.GDPPerCapita) + 6)
-        .attr("y", yScale(last.LifeExpectancy) - 8)
-        .text(last.Year);
+        .attr("class", "trajectory-country-label")
+        .attr("x", xScale(last.GDPPerCapita) + 10)
+        .attr("y", yScale(last.LifeExpectancy) + 18)
+        .text(countryName);
 }
 
-function drawLegend() {
-    const items = regionColors.domain();
+function showTooltip(event, d) {
+    tooltip
+        .style("display", "block")
+        .html(`
+            <strong>${d.Country} — ${d.Year}</strong><br>
+            Region: ${d.Region}<br>
+            Income group: ${d.IncomeGroup}<br>
+            GDP per capita: $${d3.format(",.0f")(d.GDPPerCapita)}<br>
+            Life expectancy: ${d.LifeExpectancy.toFixed(1)} years<br>
+            Population: ${d3.format(",")(d.Population)}
+        `);
+
+    moveTooltip(event);
+}
+
+function moveTooltip(event) {
+    const container = document
+        .querySelector(".chart-container")
+        .getBoundingClientRect();
+
+    tooltip
+        .style("left", `${event.clientX - container.left + 15}px`)
+        .style("top", `${event.clientY - container.top + 15}px`);
+}
+
+function hideTooltip() {
+    tooltip.style("display", "none");
+}
+
+function drawLegend(scale, title) {
+    const items = scale.domain();
 
     const legend = chart
         .append("g")
         .attr("class", "legend")
-        .attr("transform", `translate(${width - 225},${height - 160})`);
+        .attr("transform", `translate(${width - 225},${height - 165})`);
+
+    legend.append("text")
+        .attr("class", "legend-title")
+        .attr("y", -12)
+        .text(title);
 
     const rows = legend
         .selectAll(".legend-row")
@@ -372,12 +546,25 @@ function drawLegend() {
 
     rows.append("circle")
         .attr("r", 5)
-        .attr("fill", d => regionColors(d));
+        .attr("fill", d => scale(d));
 
     rows.append("text")
         .attr("x", 12)
         .attr("y", 4)
         .text(d => d);
+}
+
+function addCallout(x, y, title, body, targetX, targetY) {
+    chart.append("line")
+        .attr("class", "annotation-line")
+        .attr("x1", x)
+        .attr("y1", y + 22)
+        .attr("x2", targetX)
+        .attr("y2", targetY)
+        .attr("stroke", "#6b7280")
+        .attr("stroke-width", 1.5);
+
+    addAnnotation(x, y, title, body);
 }
 
 function addAnnotation(x, y, title, body) {
