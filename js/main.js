@@ -255,7 +255,7 @@ function renderSceneOne() {
     addSideAnnotation(
         30,
         90,
-        "Most countries moved up and right",
+        "Most countries moved up",
         "Over two decades, income and longevity generally increased together."
     );
 
