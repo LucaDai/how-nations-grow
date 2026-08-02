@@ -173,3 +173,27 @@ button:disabled {
     font-size: 11px;
     font-weight: 700;
 }
+
+.legend-title {
+    fill: #1f2933;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.annotation-line {
+    pointer-events: none;
+}
+
+.trajectory-country-label {
+    fill: #111827;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.milestone-label {
+    font-size: 10px;
+}
+
+.country-path {
+    pointer-events: none;
+}
