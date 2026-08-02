@@ -1,1 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
 
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>How Nations Grow</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+
+<body>
+    <main class="page">
+
+        <header class="story-header">
+            <p class="eyebrow">
+                GLOBAL DEVELOPMENT, 2000–2023
+            </p>
+
+            <h1>How Nations Grow</h1>
+
+            <h2 id="scene-title"></h2>
+
+            <p id="scene-description"></p>
+        </header>
+
+        <section class="chart-container">
+
+            <svg
+                id="chart"
+                width="960"
+                height="600"
+                role="img"
+                aria-label="Scatter plot showing GDP per capita and life expectancy"
+            ></svg>
+
+            <div id="tooltip" class="tooltip"></div>
+        </section>
+
+        <section id="exploration-controls" class="exploration-controls">
+            <label for="country-select">
+                Highlight a country:
+            </label>
+
+            <select id="country-select">
+                <option value="">Select a country</option>
+            </select>
+        </section>
+
+        <nav class="navigation">
+            <button id="previous-button">
+                ← Previous
+            </button>
+
+            <span id="scene-indicator"></span>
+
+            <button id="next-button">
+                Next →
+            </button>
+        </nav>
+
+    </main>
+
+    <script src="main.js"></script>
+</body>
+</html>
