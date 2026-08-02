@@ -151,3 +151,25 @@ button:disabled {
     cursor: default;
     opacity: 0.35;
 }
+.year-label {
+    fill: #9aa5b1;
+    font-size: 42px;
+    font-weight: 700;
+}
+
+.highlight-label {
+    fill: #1f2933;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.legend text {
+    fill: #52606d;
+    font-size: 11px;
+}
+
+.trajectory-label {
+    fill: #111827;
+    font-size: 11px;
+    font-weight: 700;
+}
