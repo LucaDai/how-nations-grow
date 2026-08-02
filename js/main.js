@@ -9,7 +9,7 @@ const scenes = [
     {
         title: "The world moved upward",
         description:
-            "From 2000 to 2023, most countries became richer and life expectancy generally increased."
+            "From 2000 to 2023, most countries became richer and life expectancy generally increased. Larger circles represent countries with larger populations."
     },
     {
         title: "Growth is uneven",
